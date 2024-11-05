@@ -15,7 +15,7 @@ async def check_openrouter(key: APIKey, session):
         key.bought_credits = not data['is_free_tier']
         key.limit_reached = key.credit_limit is not None and key.usage >= key.credit_limit
         key.rpm = int(data['rate_limit']['requests']) // int(data['rate_limit']['interval'].replace('s', '')) * 60
-        key.balance = await get_key_balance(key, session)
+        # key.balance = await get_key_balance(key, session)
 
         return True
 

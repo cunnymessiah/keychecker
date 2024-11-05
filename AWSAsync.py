@@ -192,6 +192,9 @@ async def invoke_model(key: APIKey, session, region, model):
             resp = await response.json()
             if resp['message'] and 'Malformed input request' in resp['message']:
                 key.models[region].append(model_name)
+            elif resp['message'] and 'Operation not' in resp['message']:
+                key.useless = True
+                key.useless_reasons.append('Quarantined Key')
 
 
 async def retrieve_models(key: APIKey, session, region):
