@@ -66,7 +66,7 @@ async def test_invoke_perms(key: APIKey, session, model):
                 if message and ('The request signature we calculated does not match the signature you provided' in message or 'The security token included in the request is invalid' in message):
                     return False
             elif response.status == 400 or response.status == 404:
-                if message and 'Malformed input request' in message:
+                if message and 'The provided body' in message:
                     if key.region == "":
                         key.region = region
                     else:
@@ -190,7 +190,7 @@ async def invoke_model(key: APIKey, session, region, model):
     async with session.post(url, headers=signed_headers, data=signed_data) as response:
         if response.status == 400:
             resp = await response.json()
-            if resp['message'] and 'Malformed input request' in resp['message']:
+            if resp['message'] and 'The provided body' in resp['message']:
                 key.models[region].append(model_name)
             elif resp['message'] and 'Operation not' in resp['message']:
                 key.useless = True
