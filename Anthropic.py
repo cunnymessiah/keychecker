@@ -35,13 +35,10 @@ async def check_anthropic(key: APIKey, session):
                 return True
                 
         try:
-            key.remaining_tokens = int(response.headers['anthropic-ratelimit-tokens-remaining'])
-            tokenlimit = int(response.headers['anthropic-ratelimit-tokens-limit'])
             ratelimit = int(response.headers['anthropic-ratelimit-requests-limit'])
-            key.tier = get_tier(tokenlimit, ratelimit)
+            key.tier = get_tier(ratelimit)
         except KeyError:
             key.tier = "Scale Tier"
-            key.remaining_tokens = "Unknown"
 
         content_texts = [content.get("text", "") for content in json_response.get("content", []) if content.get("type") == "text"]
         key.pozzed = any(pozzed_message in text for text in content_texts for pozzed_message in pozzed_messages)
@@ -49,16 +46,15 @@ async def check_anthropic(key: APIKey, session):
         return True
 
 
-def get_tier(tokenlimit, ratelimit):
-    # if they change it again i'll stop checking for tpm.
+def get_tier(ratelimit):
     tier_mapping = {
-        (25000, 5): "Free Tier",
-        (50000, 50): "Tier 1",
-        (100000, 1000): "Tier 2",
-        (200000, 2000): "Tier 3",
-        (400000, 4000): "Tier 4"
+        5: "Free Tier",
+        50: "Tier 1",
+        1000: "Tier 2",
+        2000: "Tier 3",
+        4000: "Tier 4"
     }
-    return tier_mapping.get((tokenlimit, ratelimit), "Scale Tier")
+    return tier_mapping.get(ratelimit, "Scale Tier")
 
 
 def pretty_print_anthropic_keys(keys):
@@ -80,7 +76,7 @@ def pretty_print_anthropic_keys(keys):
     for tier, keys_in_tier in keys_by_tier.items():
         print(f'\n{len(keys_in_tier)} keys found in {tier}:')
         for key in keys_in_tier:
-            print(f'{key.api_key}' + (' | pozzed' if key.pozzed else "") + (' | rate limited' if key.rate_limited else "") + (' | remaining tokens: ' + str(key.remaining_tokens) if key.remaining_tokens else ""))
+            print(f'{key.api_key}' + (' | pozzed' if key.pozzed else "") + (' | rate limited' if key.rate_limited else ""))
 
     print(f'\nTotal keys without quota: {len(keys_without_quota)}')
     for key in keys_without_quota:
