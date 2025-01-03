@@ -2,8 +2,8 @@ import APIKey
 import asyncio
 
 oai_api_url = "https://api.openai.com/v1"
-oai_t1_rpm_limits = {"gpt-3.5-turbo": 3500, "gpt-4": 500, "gpt-4-32k-0314": 20}
-oai_tiers = {40000: 'Free', 200000: 'Tier1', 2000000: 'Tier2', 4000000: 'Tier3', 10000000: 'Tier4', 50000000: 'Tier5'}
+oai_t1_rpm_limits = {"gpt-4o-mini": 500, "gpt-4-32k-0314": 20}
+oai_tiers = {40000: 'Free', 200000: 'Tier1', 2000000: 'Tier2', 4000000: 'Tier3', 10000000: 'Tier4', 150000000: 'Tier5'}
 
 
 async def get_oai_model(key: APIKey, session, retries, org=None):
@@ -15,7 +15,7 @@ async def get_oai_model(key: APIKey, session, retries, org=None):
             if response.status == 200:
                 data = await response.json()
                 models = sorted(data["data"], key=lambda m: len(m["id"]))
-                top_model = "gpt-3.5-turbo"
+                top_model = "gpt-4o-mini"
                 for model in models:
                     if "ft:" in model["id"]:
                         key.has_special_models = True
@@ -25,12 +25,12 @@ async def get_oai_model(key: APIKey, session, retries, org=None):
                         key.real_32k = True
                     if model["id"] == "gpt-4-32k-0314":
                         top_model = model["id"]
-                    elif model["id"] == "gpt-4":
+                    elif model["id"] == "gpt-4o-mini":
                         top_model = model["id"]
                 key.model = top_model
                 return True
             elif response.status == 403:
-                key.model = "gpt-4"
+                key.model = "gpt-4o-mini"
                 return True
             elif response.status != 502:
                 return
@@ -72,7 +72,7 @@ async def get_oai_key_attribs(key: APIKey, session, retries, org=None):
 async def get_oai_key_tier(key: APIKey, session, retries, org=None):
     if key.trial:
         return 'Free'
-    chat_object = {"model": f'gpt-3.5-turbo', "messages": [{"role": "user", "content": ""}], "max_tokens": 0}
+    chat_object = {"model": f'gpt-4o-mini', "messages": [{"role": "user", "content": ""}], "max_tokens": 0}
     for _ in range(retries):
         headers = {'Authorization': f'Bearer {key.api_key}', 'accept': 'application/json'}
         if org is not None:
@@ -127,15 +127,38 @@ async def clone_key(key: APIKey, session, retries):
 
 
 def check_manual_increase(key: APIKey):
-    if key.model == 'gpt-3.5-turbo' and key.rpm > 3500:
+    """
+    Checks if the key has manually increased limits beyond the default for its tier.
+    Special case: For Free and Tier1 tiers, the 'rpm' attribute is actually RPD (requests per day).
+    """
+
+    # i'm not even joking when i say this, they change the response headers to rpd for free and t1 keys
+    if key.tier == 'Free':
+        return key.rpm > 200
+    
+    if key.tier == 'Tier1':
+        return key.rpm > 10000
+
+    default_limits = {
+        'Free':  {'gpt-4o-mini': {'rpm': 3,     'tpm': 40000}},
+        'Tier1': {'gpt-4o-mini': {'rpm': 500,   'tpm': 200000}},
+        'Tier2': {'gpt-4o-mini': {'rpm': 5000,  'tpm': 2000000}},
+        'Tier3': {'gpt-4o-mini': {'rpm': 5000,  'tpm': 4000000}},
+        'Tier4': {'gpt-4o-mini': {'rpm': 10000, 'tpm': 10000000}},
+        'Tier5': {'gpt-4o-mini': {'rpm': 30000, 'tpm': 150000000}},
+    }
+
+    tier_limits = default_limits.get(key.tier, {}).get(key.model)
+    if tier_limits is None:
+        return False
+
+    if key.rpm > tier_limits['rpm'] or key.tpm > tier_limits['tpm']:
         return True
-    elif key.tier == 'Tier1' and key.model != 'gpt-3.5-turbo' and key.rpm > 500:
-        return True
-    elif key.tier in ['Tier2', 'Tier3'] and key.rpm > 5000:
-        return True
-    elif key.tier in ['Tier3', 'Tier4'] and key.rpm > 10000:
-        return True
+
     return False
+
+
+
 
 
 def pretty_print_oai_keys(keys, cloned_keys):
@@ -146,11 +169,7 @@ def pretty_print_oai_keys(keys, cloned_keys):
     t5_count = 0
 
     key_groups = {
-        "gpt-3.5-turbo": {
-            "has_quota": [],
-            "no_quota": []
-        },
-        "gpt-4": {
+        "gpt-4o-mini": {
             "has_quota": [],
             "no_quota": []
         },
@@ -172,44 +191,40 @@ def pretty_print_oai_keys(keys, cloned_keys):
             key_groups[key.model]['no_quota'].append(key)
             no_quota_count += 1
 
-    print(f'Validated {len(key_groups["gpt-3.5-turbo"]["has_quota"])} Turbo keys with quota:')
-    for key in key_groups["gpt-3.5-turbo"]["has_quota"]:
+    def get_units_for_key(k: APIKey) -> str:
+        if k.tier in ("Free", "Tier1"):
+            return "RPD"
+        else:
+            return "RPM"
+
+    print(f'\nValidated {len(key_groups["gpt-4o-mini"]["has_quota"])} gpt-4o-mini keys with quota:')
+    for key in key_groups["gpt-4o-mini"]["has_quota"]:
+        units = get_units_for_key(key)
         print(f"{key.api_key}"
               + (f" | default org - {key.default_org}" if key.default_org else "")
               + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + f" | {key.rpm} RPM" + (f" - {key.tier}" if key.tier else "")
-              + (" (RPM increased via request)" if check_manual_increase(key) else "")
-              + (f" | TRIAL KEY" if key.trial else ""))
-
-    print(f'\nValidated {len(key_groups["gpt-3.5-turbo"]["no_quota"])} Turbo keys with no quota:')
-    for key in key_groups["gpt-3.5-turbo"]["no_quota"]:
-        print(f"{key.api_key}"
-              + (f" | default org - {key.default_org}" if key.default_org else "")
-              + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else ""))
-
-    print(f'\nValidated {len(key_groups["gpt-4"]["has_quota"])} gpt-4 keys with quota:')
-    for key in key_groups["gpt-4"]["has_quota"]:
-        print(f"{key.api_key}"
-              + (f" | default org - {key.default_org}" if key.default_org else "")
-              + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + f" | {key.rpm} RPM" + (f" - {key.tier}" if key.tier else "")
+              + f" | {key.rpm} {units}"  # <-- use units
+              + (f" - {key.tier}" if key.tier else "")
               + (" (RPM increased via request)" if check_manual_increase(key) else "")
               + (f" | TRIAL KEY" if key.trial else "")
               + (f" | key has finetuned models" if key.has_special_models else ""))
 
-    print(f'\nValidated {len(key_groups["gpt-4"]["no_quota"])} gpt-4 keys with no quota:')
-    for key in key_groups["gpt-4"]["no_quota"]:
+    print(f'\nValidated {len(key_groups["gpt-4o-mini"]["no_quota"])} gpt-4o-mini keys with no quota:')
+    for key in key_groups["gpt-4o-mini"]["no_quota"]:
         print(f"{key.api_key}"
               + (f" | default org - {key.default_org}" if key.default_org else "")
               + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
               + (f" | key has finetuned models" if key.has_special_models else ""))
 
+    # For gpt-4-32k-0314 with quota
     print(f'\nValidated {len(key_groups["gpt-4-32k-0314"]["has_quota"])} gpt-4-32k keys with quota:')
     for key in key_groups["gpt-4-32k-0314"]["has_quota"]:
+        units = get_units_for_key(key)
         print(f"{key.api_key}"
               + (f" | default org - {key.default_org}" if key.default_org else "")
               + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + f" | {key.rpm} RPM" + (f" - {key.tier}" if key.tier else "")
+              + f" | {key.rpm} {units}"  # <-- use units
+              + (f" - {key.tier}" if key.tier else "")
               + (" (RPM increased via request)" if check_manual_increase(key) else "")
               + (f" | TRIAL KEY" if key.trial else "")
               + (f" | key has finetuned models" if key.has_special_models else "")
@@ -227,4 +242,5 @@ def pretty_print_oai_keys(keys, cloned_keys):
 
     if cloned_keys:
         print(f'\n--- Cloned {len(cloned_keys)} keys due to finding alternative orgs that could prompt ---')
-    print(f'\n--- Total Valid OpenAI Keys: {len(keys)} ({quota_count} in quota, {no_quota_count} no quota, {org_count} orgs, {t5_count} Tier5) ---\n')
+    print(f'\n--- Total Valid OpenAI Keys: {len(keys)} '
+          f'({quota_count} in quota, {no_quota_count} no quota, {org_count} orgs, {t5_count} Tier5) ---\n')
