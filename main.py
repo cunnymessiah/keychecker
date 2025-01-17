@@ -1,4 +1,5 @@
 from Anthropic import check_anthropic, pretty_print_anthropic_keys
+from Deepseek import check_whale, pretty_print_deepseek_keys
 from IO import IO
 from OpenAI import get_oai_model, get_oai_key_attribs, get_oai_org, pretty_print_oai_keys, clone_key
 from AI21 import check_ai21, pretty_print_ai21_keys
@@ -181,6 +182,16 @@ async def validate_vertexai(key: APIKey, sem):
         api_keys.add(key)
 
 
+async def validate_whale(key: APIKey, sem):
+    async with sem, aiohttp.ClientSession() as session:
+        IO.conditional_print(f"Checking Deepseek key: {key.api_key}", args.verbose)
+        if await check_whale(key, session) is None:
+            IO.conditional_print(f"Invalid Deepseek key: {key.api_key}", args.verbose)
+            return
+        IO.conditional_print(f"Deepseek key '{key.api_key}' is valid", args.verbose)
+        api_keys.add(key)
+
+
 async def execute_with_retries(func, key, sem, retries):
     attempt = 0
     while attempt < retries:
@@ -210,6 +221,7 @@ makersuite_regex = re.compile(r'AIzaSy[A-Za-z0-9\-_]{33}')
 aws_regex = re.compile(r'^(AKIA[0-9A-Z]{16}):([A-Za-z0-9+/]{40})$')
 azure_regex = re.compile(r'^(.+):([a-z0-9]{32})$')
 openrouter_regex = re.compile(r'sk-or-v1-[a-z0-9]{64}')
+deepseek_regex = re.compile(r'sk-[a-f0-9]{32}')
 # vertex_regex = re.compile(r'^(.+):(ya29.[A-Za-z0-9\-_]{469})$') regex for the oauth tokens, useless since they expire hourly
 executor = ThreadPoolExecutor(max_workers=100)
 concurrent_connections = asyncio.Semaphore(1500)
@@ -245,15 +257,18 @@ async def validate_keys():
             key_obj = APIKey(Provider.OPENROUTER, key)
             tasks.append(execute_with_retries(validate_openrouter, key_obj, concurrent_connections, 5))
         elif "sk-" in key:
-            anthropic_flag = "T3BlbkFJ" not in key
-            if anthropic_flag:
+            anthropic_flag = "T3BlbkFJ" not in key and len(key) > 36
+            deepseek_flag = len(key) < 36
+            if deepseek_flag:
+                match = deepseek_regex.match(key)
+            elif anthropic_flag:
                 match = anthropic_third_regex.match(key)
             else:
                 match = oai_regex.match(key)
             if not match:
                 continue
-            key_obj = APIKey(Provider.ANTHROPIC if anthropic_flag else Provider.OPENAI, key)
-            tasks.append(execute_with_retries(validate_anthropic if anthropic_flag else validate_openai, key_obj, concurrent_connections, 5))
+            key_obj = APIKey(Provider.DEEPSEEK if deepseek_flag else Provider.ANTHROPIC if anthropic_flag else Provider.OPENAI, key)
+            tasks.append(execute_with_retries(validate_whale if deepseek_flag else validate_anthropic if anthropic_flag else validate_openai, key_obj, concurrent_connections, 5))
         elif ":" and "AKIA" in key:
             match = aws_regex.match(key)
             if not match:
@@ -293,7 +308,7 @@ async def validate_keys():
     futures.clear()
 
 
-def get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, valid_makersuite_keys, valid_aws_keys, valid_azure_keys, valid_vertexai_keys, valid_mistral_keys, valid_openrouter_keys, valid_elevenlabs_keys):
+def get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, valid_makersuite_keys, valid_aws_keys, valid_azure_keys, valid_vertexai_keys, valid_mistral_keys, valid_openrouter_keys, valid_elevenlabs_keys, valid_deepseek_keys):
     valid_oai_keys_set = set([key.api_key for key in valid_oai_keys])
     valid_anthropic_keys_set = set([key.api_key for key in valid_anthropic_keys])
     valid_ai21_keys_set = set([key.api_key for key in valid_ai21_keys])
@@ -304,8 +319,9 @@ def get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, vali
     valid_mistral_keys_set = set([key.api_key for key in valid_mistral_keys])
     valid_openrouter_keys_set = set([key.api_key for key in valid_openrouter_keys])
     valid_elevenlabs_set = set([key.api_key for key in valid_elevenlabs_keys])
+    valid_deepseek_set = set([key.api_key for key in valid_deepseek_keys])
 
-    invalid_keys = inputted_keys - valid_oai_keys_set - valid_anthropic_keys_set - valid_ai21_keys_set - valid_makersuite_keys_set - valid_aws_keys_set - valid_azure_keys_set - valid_vertexai_keys_set - valid_mistral_keys_set - valid_openrouter_keys_set - valid_elevenlabs_set
+    invalid_keys = inputted_keys - valid_oai_keys_set - valid_anthropic_keys_set - valid_ai21_keys_set - valid_makersuite_keys_set - valid_aws_keys_set - valid_azure_keys_set - valid_vertexai_keys_set - valid_mistral_keys_set - valid_openrouter_keys_set - valid_elevenlabs_set - valid_deepseek_set
     invalid_keys_len = len(invalid_keys) + len(cloned_keys) if cloned_keys else len(invalid_keys)
     if invalid_keys_len < 1:
         return
@@ -327,6 +343,7 @@ def output_keys():
     valid_mistral_keys = []
     valid_openrouter_keys = []
     valid_elevenlabs_keys = []
+    valid_deepseek_keys = []
 
     for key in api_keys:
         if key.provider == Provider.OPENAI:
@@ -349,6 +366,8 @@ def output_keys():
             valid_openrouter_keys.append(key)
         elif key.provider == Provider.ELEVENLABS:
             valid_elevenlabs_keys.append(key)
+        elif key.provider == Provider.DEEPSEEK:
+            valid_deepseek_keys.append(key)
 
     if should_write:
         output_filename = "key_snapshots.txt"
@@ -360,7 +379,7 @@ def output_keys():
         print(f"Key snapshot from {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("#" * 90)
         print(f'\n--- Checked {len(inputted_keys)} keys | {invalid_keys} were invalid ---')
-        get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, valid_makersuite_keys, valid_aws_keys, valid_azure_keys, valid_vertexai_keys, valid_mistral_keys, valid_openrouter_keys, valid_elevenlabs_keys)
+        get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, valid_makersuite_keys, valid_aws_keys, valid_azure_keys, valid_vertexai_keys, valid_mistral_keys, valid_openrouter_keys, valid_elevenlabs_keys, valid_deepseek_keys)
         print()
         if valid_oai_keys:
             pretty_print_oai_keys(valid_oai_keys, cloned_keys)
@@ -382,6 +401,8 @@ def output_keys():
             pretty_print_openrouter_keys(valid_openrouter_keys)
         if valid_elevenlabs_keys:
             pretty_print_elevenlabs_keys(valid_elevenlabs_keys)
+        if valid_deepseek_keys:
+            pretty_print_deepseek_keys(valid_deepseek_keys)
     else:
         print("OPENAI_KEY=" + ','.join(key.api_key for key in valid_oai_keys if key.has_quota))
         print("ANTHROPIC_KEY=" + ','.join(key.api_key for key in valid_anthropic_keys if key.has_quota))

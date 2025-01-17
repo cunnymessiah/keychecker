@@ -8,7 +8,6 @@ class APIKey:
 
         if provider == Provider.OPENAI:
             self.model = ""
-            self.trial = False
             self.has_quota = False
             self.default_org = ""
             self.organizations = []
@@ -74,6 +73,10 @@ class APIKey:
             self.unlimited = False
             self.pro_voice_limit = 0
 
+        elif provider == Provider.DEEPSEEK:
+            self.balance = ""
+            self.available = False
+
     def clone(self):
         cloned_key = APIKey(self.provider, self.api_key)
         cloned_key.__dict__ = self.__dict__.copy()
@@ -91,3 +94,4 @@ class Provider(Enum):
     MISTRAL = 8
     OPENROUTER = 9
     ELEVENLABS = 10
+    DEEPSEEK = 11

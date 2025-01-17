@@ -13,6 +13,7 @@ Currently supports and validates keys for the services below, and checks for the
 - MistralAI - (Subscription status)
 - OpenRouter - (Estimated balance, usage in $, credit limit, RPM, has purchased any credits)
 - ElevenLabs - (Key tier, remaining characters in plan, detect uncapped char quota, pro voice cloning limit, invoice details on pay as you go plans)
+- DeepSeek - (Account balance)
 
 # Usage:
 `pip install -r requirements.txt`
@@ -24,7 +25,6 @@ Currently supports and validates keys for the services below, and checks for the
 `-proxyoutput`
 
 Outputs keys in a format that can be easily copied and pasted into khanon's proxy instead of pretty print
-
 
 `-nooutput`
 
