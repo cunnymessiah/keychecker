@@ -183,12 +183,25 @@ async def validate_vertexai(key: APIKey, sem):
 
 
 async def validate_whale(key: APIKey, sem):
-    async with sem, aiohttp.ClientSession() as session:
+    retry_count = 4
+    async with sem, deepseek_semaphore, aiohttp.ClientSession() as session:
         IO.conditional_print(f"Checking Deepseek key: {key.api_key}", args.verbose)
-        if await check_whale(key, session) is None:
+        key_status = await check_whale(key, session)
+        if key_status is None:
             IO.conditional_print(f"Invalid Deepseek key: {key.api_key}", args.verbose)
             return
+        elif key_status is False:
+            i = 0
+            while await check_whale(key, session) is False and i < retry_count:
+                i += 1
+                await asyncio.sleep(2)
+                print(f"Stuck determining status of rate limited Deepseek key '{key.api_key[-8:]}' - attempt {i} of {retry_count}")
+                key.rate_limited = True
+            else:
+                if i < retry_count:
+                    key.rate_limited = False
         IO.conditional_print(f"Deepseek key '{key.api_key}' is valid", args.verbose)
+        # await asyncio.sleep(5)
         api_keys.add(key)
 
 
@@ -226,7 +239,7 @@ deepseek_regex = re.compile(r'sk-[a-f0-9]{32}')
 executor = ThreadPoolExecutor(max_workers=100)
 concurrent_connections = asyncio.Semaphore(1500)
 makersuite_semaphore = asyncio.Semaphore(50)  # when did google become such a pussy
-
+deepseek_semaphore = asyncio.Semaphore(50)
 
 async def validate_keys():
     tasks = []

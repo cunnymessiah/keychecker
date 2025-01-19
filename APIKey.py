@@ -74,8 +74,9 @@ class APIKey:
             self.pro_voice_limit = 0
 
         elif provider == Provider.DEEPSEEK:
-            self.balance = ""
+            self.balance = "$0.0 USD"
             self.available = False
+            self.rate_limited = False
 
     def clone(self):
         cloned_key = APIKey(self.provider, self.api_key)
