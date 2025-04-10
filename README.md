@@ -14,6 +14,7 @@ Currently supports and validates keys for the services below, and checks for the
 - OpenRouter - (Estimated balance, usage in $, credit limit, RPM, has purchased any credits)
 - ElevenLabs - (Key tier, remaining characters in plan, detect uncapped char quota, pro voice cloning limit, invoice details on pay as you go plans)
 - DeepSeek - (Account balance)
+- xAI - (Subscription status)
 
 # Usage:
 `pip install -r requirements.txt`

@@ -16,6 +16,8 @@ class APIKey:
             self.has_special_models = False
             self.real_32k = False
             self.the_one = False
+            self.extra_models = False
+            self.extra_model_list = []
 
         elif provider == Provider.ANTHROPIC:
             self.pozzed = False
@@ -78,6 +80,10 @@ class APIKey:
             self.available = False
             self.rate_limited = False
 
+        elif provider == Provider.XAI:
+            self.blocked = True
+            self.subbed = False
+
     def clone(self):
         cloned_key = APIKey(self.provider, self.api_key)
         cloned_key.__dict__ = self.__dict__.copy()
@@ -96,3 +102,4 @@ class Provider(Enum):
     OPENROUTER = 9
     ELEVENLABS = 10
     DEEPSEEK = 11
+    XAI = 12

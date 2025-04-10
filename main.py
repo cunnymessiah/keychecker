@@ -10,6 +10,7 @@ from VertexAI import check_vertexai, pretty_print_vertexai_keys
 from Mistral import check_mistral, pretty_print_mistral_keys
 from OpenRouter import check_openrouter, pretty_print_openrouter_keys
 from ElevenLabs import check_elevenlabs, pretty_print_elevenlabs_keys
+from XAI import check_xai, pretty_print_xai_keys
 
 from APIKey import APIKey, Provider
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -144,6 +145,16 @@ async def validate_elevenlabs(key: APIKey, sem):
         api_keys.add(key)
 
 
+async def validate_xai(key: APIKey, sem):
+    async with sem, aiohttp.ClientSession() as session:
+        IO.conditional_print(f"Checking xAI key: {key.api_key}", args.verbose)
+        if await check_xai(key, session) is None:
+            IO.conditional_print(f"Invalid xAI key: {key.api_key}", args.verbose)
+            return
+        IO.conditional_print(f"xAI key '{key.api_key}' is valid", args.verbose)
+        api_keys.add(key)
+
+
 def validate_aws(key: APIKey):
     IO.conditional_print(f"Checking AWS key: {key.api_key}", args.verbose)
     if check_aws(key) is None:
@@ -235,6 +246,7 @@ aws_regex = re.compile(r'^(AKIA[0-9A-Z]{16}):([A-Za-z0-9+/]{40})$')
 azure_regex = re.compile(r'^(.+):([a-z0-9]{32})$')
 openrouter_regex = re.compile(r'sk-or-v1-[a-z0-9]{64}')
 deepseek_regex = re.compile(r'sk-[a-f0-9]{32}')
+xai_regex = re.compile(r'xai-[A-Za-z0-9]{80}')
 # vertex_regex = re.compile(r'^(.+):(ya29.[A-Za-z0-9\-_]{469})$') regex for the oauth tokens, useless since they expire hourly
 executor = ThreadPoolExecutor(max_workers=100)
 concurrent_connections = asyncio.Semaphore(1500)
@@ -263,6 +275,12 @@ async def validate_keys():
                 continue
             key_obj = APIKey(Provider.MAKERSUITE, key)
             tasks.append(execute_with_retries(validate_makersuite, key_obj, makersuite_semaphore, 5))
+        elif "xai-" in key[:4]:
+            match = xai_regex.match(key)
+            if not match:
+                continue
+            key_obj = APIKey(Provider.XAI, key)
+            tasks.append(execute_with_retries(validate_xai, key_obj, concurrent_connections, 5))
         elif "sk-or-v1-" in key:
             match = openrouter_regex.match(key)
             if not match:
@@ -321,7 +339,7 @@ async def validate_keys():
     futures.clear()
 
 
-def get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, valid_makersuite_keys, valid_aws_keys, valid_azure_keys, valid_vertexai_keys, valid_mistral_keys, valid_openrouter_keys, valid_elevenlabs_keys, valid_deepseek_keys):
+def get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, valid_makersuite_keys, valid_aws_keys, valid_azure_keys, valid_vertexai_keys, valid_mistral_keys, valid_openrouter_keys, valid_elevenlabs_keys, valid_deepseek_keys, valid_xai_keys):
     valid_oai_keys_set = set([key.api_key for key in valid_oai_keys])
     valid_anthropic_keys_set = set([key.api_key for key in valid_anthropic_keys])
     valid_ai21_keys_set = set([key.api_key for key in valid_ai21_keys])
@@ -333,8 +351,9 @@ def get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, vali
     valid_openrouter_keys_set = set([key.api_key for key in valid_openrouter_keys])
     valid_elevenlabs_set = set([key.api_key for key in valid_elevenlabs_keys])
     valid_deepseek_set = set([key.api_key for key in valid_deepseek_keys])
+    valid_xai_set = set([key.api_key for key in valid_xai_keys])
 
-    invalid_keys = inputted_keys - valid_oai_keys_set - valid_anthropic_keys_set - valid_ai21_keys_set - valid_makersuite_keys_set - valid_aws_keys_set - valid_azure_keys_set - valid_vertexai_keys_set - valid_mistral_keys_set - valid_openrouter_keys_set - valid_elevenlabs_set - valid_deepseek_set
+    invalid_keys = inputted_keys - valid_oai_keys_set - valid_anthropic_keys_set - valid_ai21_keys_set - valid_makersuite_keys_set - valid_aws_keys_set - valid_azure_keys_set - valid_vertexai_keys_set - valid_mistral_keys_set - valid_openrouter_keys_set - valid_elevenlabs_set - valid_deepseek_set - valid_xai_set
     invalid_keys_len = len(invalid_keys) + len(cloned_keys) if cloned_keys else len(invalid_keys)
     if invalid_keys_len < 1:
         return
@@ -357,6 +376,7 @@ def output_keys():
     valid_openrouter_keys = []
     valid_elevenlabs_keys = []
     valid_deepseek_keys = []
+    valid_xai_keys = []
 
     for key in api_keys:
         if key.provider == Provider.OPENAI:
@@ -381,6 +401,8 @@ def output_keys():
             valid_elevenlabs_keys.append(key)
         elif key.provider == Provider.DEEPSEEK:
             valid_deepseek_keys.append(key)
+        elif key.provider == Provider.XAI:
+            valid_xai_keys.append(key)
 
     if should_write:
         output_filename = "key_snapshots.txt"
@@ -392,7 +414,7 @@ def output_keys():
         print(f"Key snapshot from {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("#" * 90)
         print(f'\n--- Checked {len(inputted_keys)} keys | {invalid_keys} were invalid ---')
-        get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, valid_makersuite_keys, valid_aws_keys, valid_azure_keys, valid_vertexai_keys, valid_mistral_keys, valid_openrouter_keys, valid_elevenlabs_keys, valid_deepseek_keys)
+        get_invalid_keys(valid_oai_keys, valid_anthropic_keys, valid_ai21_keys, valid_makersuite_keys, valid_aws_keys, valid_azure_keys, valid_vertexai_keys, valid_mistral_keys, valid_openrouter_keys, valid_elevenlabs_keys, valid_deepseek_keys, valid_xai_keys)
         print()
         if valid_oai_keys:
             pretty_print_oai_keys(valid_oai_keys, cloned_keys)
@@ -416,6 +438,8 @@ def output_keys():
             pretty_print_elevenlabs_keys(valid_elevenlabs_keys)
         if valid_deepseek_keys:
             pretty_print_deepseek_keys(valid_deepseek_keys)
+        if valid_xai_keys:
+            pretty_print_xai_keys(valid_xai_keys)
     else:
         print("OPENAI_KEY=" + ','.join(key.api_key for key in valid_oai_keys if key.has_quota))
         print("ANTHROPIC_KEY=" + ','.join(key.api_key for key in valid_anthropic_keys if key.has_quota))
