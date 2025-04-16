@@ -78,6 +78,14 @@ standard_model_ids = {
     "gpt-4.5-preview-2025-02-27",
     "o3",
     "o4-mini",
+    "o3-2025-04-16",
+    "o4-mini-2025-04-16",
+    "gpt-4.1-mini",
+    "gpt-4.1-mini-2025-04-14",
+    "gpt-4.1-nano",
+    "gpt-4.1-nano-2025-04-14",
+    "gpt-4.1",
+    "gpt-4.1-2025-04-14",
 }
 
 
@@ -100,7 +108,7 @@ async def get_oai_model(key: APIKey, session, retries, org=None):
                         key.has_special_models = True
                     elif model_id not in standard_model_ids and ":ft-" not in model_id:
                         key.extra_models = True
-                        key.extra_model_list.append(model_id)
+                        key.extra_model_list.add(model_id)
 
                     if model_id == "gpt-4-base":
                         key.the_one = True

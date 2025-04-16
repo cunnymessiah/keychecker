@@ -17,7 +17,7 @@ class APIKey:
             self.real_32k = False
             self.the_one = False
             self.extra_models = False
-            self.extra_model_list = []
+            self.extra_model_list = set()
 
         elif provider == Provider.ANTHROPIC:
             self.pozzed = False
