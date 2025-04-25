@@ -86,6 +86,7 @@ standard_model_ids = {
     "gpt-4.1-nano-2025-04-14",
     "gpt-4.1",
     "gpt-4.1-2025-04-14",
+    "gpt-image-1",
 }
 
 
@@ -114,6 +115,8 @@ async def get_oai_model(key: APIKey, session, retries, org=None):
                         key.the_one = True
                     if model_id == "gpt-4-32k" or model_id == "gpt-4-32k-0613":
                         key.real_32k = True
+                    if model_id == "gpt-image-1":
+                        key.has_verified_org = True
 
                     if model_id in model_priority:
                         available_priority_models.add(model_id)
@@ -240,6 +243,7 @@ def pretty_print_oai_keys(keys, cloned_keys):
     quota_count = 0
     no_quota_count = 0
     t5_count = 0
+    verified_orgs_count = 0
 
     key_groups = {
         "gpt-4o-mini": {
@@ -255,12 +259,17 @@ def pretty_print_oai_keys(keys, cloned_keys):
             "no_quota": []
         }
     }
+    
+    verified_org_keys = []
 
     for key in keys:
         if key.organizations:
             org_count += 1
         if key.tier == 'Tier5':
             t5_count += 1
+        if key.has_verified_org:
+            verified_org_keys.append(key)
+            verified_orgs_count += 1
         if key.has_quota:
             key_groups[key.model]['has_quota'].append(key)
             quota_count += 1
@@ -326,4 +335,16 @@ def pretty_print_oai_keys(keys, cloned_keys):
 
     if cloned_keys:
         print(f'\n--- Cloned {len(cloned_keys)} keys due to finding alternative orgs that could prompt ---')
-    print(f'\n--- Total Valid OpenAI Keys: {len(keys)} ({quota_count} in quota, {no_quota_count} no quota, {org_count} orgs, {t5_count} Tier5) ---\n')
+    
+    # Add section for verified organizations
+    if verified_org_keys:
+        print(f'\n--- Verified Organizations ({verified_orgs_count} keys with access to gpt-image-1 model) ---')
+        for key in verified_org_keys:
+            print(f"{key.api_key}"
+                  + (f" | default org - {key.default_org}" if key.default_org else "")
+                  + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
+                  + f" | {key.rpm} RPM" + (f" - {key.tier}" if key.tier else "")
+                  + (f" | model - {key.model}")
+                  + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else ""))
+    
+    print(f'\n--- Total Valid OpenAI Keys: {len(keys)} ({quota_count} in quota, {no_quota_count} no quota, {org_count} orgs, {t5_count} Tier5, {verified_orgs_count} verified orgs) ---\n')
