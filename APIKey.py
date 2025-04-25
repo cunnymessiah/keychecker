@@ -18,6 +18,7 @@ class APIKey:
             self.the_one = False
             self.extra_models = False
             self.extra_model_list = set()
+            self.has_verified_org = False
 
         elif provider == Provider.ANTHROPIC:
             self.pozzed = False
