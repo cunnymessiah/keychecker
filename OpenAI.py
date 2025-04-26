@@ -267,7 +267,7 @@ def pretty_print_oai_keys(keys, cloned_keys):
             org_count += 1
         if key.tier == 'Tier5':
             t5_count += 1
-        if key.has_verified_org:
+        if key.has_verified_org and key.has_quota and key.rpm > 0:
             verified_org_keys.append(key)
             verified_orgs_count += 1
         if key.has_quota:
@@ -338,7 +338,7 @@ def pretty_print_oai_keys(keys, cloned_keys):
     
     # Add section for verified organizations
     if verified_org_keys:
-        print(f'\n--- Verified Organizations ({verified_orgs_count} keys with access to gpt-image-1 model) ---')
+        print(f'\n--- Verified Organizations ({verified_orgs_count} keys with access to gpt-image-1 model and quota) ---')
         for key in verified_org_keys:
             print(f"{key.api_key}"
                   + (f" | default org - {key.default_org}" if key.default_org else "")
