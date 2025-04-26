@@ -42,3 +42,7 @@ Displays an output as keys are being checked real time.
 `-awslegacy`
 
 Uses the slower legacy AWS checker (thread parallelized + boto3) instead of the new asynchronous REST API one.
+
+`-verifyorg`
+
+Enables the OpenAI checker to check if orgs are verified (by default this is disabled since it incurs one token of o3 usage)

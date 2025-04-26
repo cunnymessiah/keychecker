@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument('-file', '--file', action='store', dest='file', help='read slop from a provided filename')
     parser.add_argument('-verbose', '--verbose', action='store_true', help='watch as your slop is checked real time')
     parser.add_argument('-awslegacy', '--awslegacy', action='store_true', help='use old slow aws checker instead of fast new one for some reason.')
+    parser.add_argument('-verifyorg', '--verifyorg', action='store_true', help='sends a test prompt with o3 to detect if an openai organization has completed id verification.')
     return parser.parse_args()
 
 
@@ -65,7 +66,7 @@ async def validate_openai(key: APIKey, sem):
         if await get_oai_model(key, session, retries) is None:
             IO.conditional_print(f"Invalid OpenAI key: {key.api_key}", args.verbose)
             return
-        if await get_oai_key_attribs(key, session, retries) is None:
+        if await get_oai_key_attribs(key, session, retries, check_id=args.verifyorg) is None:
             return
         if await get_oai_org(key, session, retries) is None:
             return

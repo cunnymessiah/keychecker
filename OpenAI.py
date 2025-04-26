@@ -86,8 +86,10 @@ standard_model_ids = {
     "gpt-4.1-nano-2025-04-14",
     "gpt-4.1",
     "gpt-4.1-2025-04-14",
+    "gpt-image-1"
 }
 
+running_org_verify = False
 
 async def get_oai_model(key: APIKey, session, retries, org=None):
     for _ in range(retries):
@@ -133,7 +135,7 @@ async def get_oai_model(key: APIKey, session, retries, org=None):
         await asyncio.sleep(0.5)
 
 
-async def get_oai_key_attribs(key: APIKey, session, retries, org=None):
+async def get_oai_key_attribs(key: APIKey, session, retries, org=None, check_id=False):
     chat_object = {"model": f'{key.model}', "messages": [{"role": "user", "content": ""}], "max_tokens": 0}
     for _ in range(retries):
         headers = {'Authorization': f'Bearer {key.api_key}', 'accept': 'application/json'}
@@ -156,10 +158,39 @@ async def get_oai_key_attribs(key: APIKey, session, retries, org=None):
                         key.has_quota = True
                         key.rpm = int(response.headers.get("x-ratelimit-limit-requests"))
                         key.tier = await get_oai_key_tier(key, session, retries)
+                        if check_id:
+                            global running_org_verify
+                            running_org_verify = True
+                            key.id_verified = await check_id_verified(key, session, retries)
                 return True
             elif response.status not in [502, 500]:
                 return
         await asyncio.sleep(0.5)
+
+
+async def check_id_verified(key: APIKey, session, retries, org=None):
+    # valid parameter check is ran before unverified org detection, so the request has to be legitimate.
+    chat_object = {"model": "o3", "messages": [{"role": "user", "content": ""}], "max_completion_tokens": 1, "stream": True}
+    for attempt in range(retries):
+        headers = {'Authorization': f'Bearer {key.api_key}', 'accept': 'application/json'}
+        if org is not None:
+            headers['OpenAI-Organization'] = org
+        async with session.post(f'{oai_api_url}/chat/completions', headers=headers, json=chat_object) as response:
+            if response.status == 200:
+                return True
+            if response.status == 429:
+                continue
+            if attempt == retries - 1:
+                return False
+            if response.status == 400:
+                data = await response.json()
+                message = data["error"]["message"]
+                if "Your organization must be verified" in message:
+                    return False
+                else:
+                    return True
+            await asyncio.sleep(0.5)
+    return False
 
 
 # this will weed out fake t4/t5 keys reporting a 10k rpm limit, those keys would have requested to have their rpm increased
@@ -237,6 +268,7 @@ def check_manual_increase(key: APIKey):
 def pretty_print_oai_keys(keys, cloned_keys):
     print('-' * 90)
     org_count = 0
+    verified_org_count = 0
     quota_count = 0
     no_quota_count = 0
     t5_count = 0
@@ -259,6 +291,8 @@ def pretty_print_oai_keys(keys, cloned_keys):
     for key in keys:
         if key.organizations:
             org_count += 1
+        if key.id_verified:
+            verified_org_count += 1
         if key.tier == 'Tier5':
             t5_count += 1
         if key.has_quota:
@@ -275,14 +309,16 @@ def pretty_print_oai_keys(keys, cloned_keys):
               + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
               + f" | {key.rpm} RPM" + (f" - {key.tier}" if key.tier else "")
               + (" (RPM increased via request)" if check_manual_increase(key) else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else ""))
+              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
+              + (f" | id verified" if key.id_verified else ""))
 
     print(f'\nValidated {len(key_groups["gpt-4o-mini"]["no_quota"])} gpt-4o-mini keys with no quota:')
     for key in key_groups["gpt-4o-mini"]["no_quota"]:
         print(f"{key.api_key}"
               + (f" | default org - {key.default_org}" if key.default_org else "")
               + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else ""))
+              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
+              + (f" | id verified" if key.id_verified else ""))
 
     print(f'\nValidated {len(key_groups["gpt-4o"]["has_quota"])} gpt-4o keys with quota:')
     for key in key_groups["gpt-4o"]["has_quota"]:
@@ -292,7 +328,8 @@ def pretty_print_oai_keys(keys, cloned_keys):
               + f" | {key.rpm} RPM" + (f" - {key.tier}" if key.tier else "")
               + (" (RPM increased via request)" if check_manual_increase(key) else "")
               + (f" | key has finetuned models" if key.has_special_models else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else ""))
+              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
+              + (f" | id verified" if key.id_verified else ""))
 
     print(f'\nValidated {len(key_groups["gpt-4o"]["no_quota"])} gpt-4o keys with no quota:')
     for key in key_groups["gpt-4o"]["no_quota"]:
@@ -300,7 +337,8 @@ def pretty_print_oai_keys(keys, cloned_keys):
               + (f" | default org - {key.default_org}" if key.default_org else "")
               + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
               + (f" | key has finetuned models" if key.has_special_models else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else ""))
+              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
+              + (f" | id verified" if key.id_verified else ""))
 
     print(f'\nValidated {len(key_groups["gpt-4-32k-0314"]["has_quota"])} gpt-4-32k keys with quota:')
     for key in key_groups["gpt-4-32k-0314"]["has_quota"]:
@@ -312,7 +350,8 @@ def pretty_print_oai_keys(keys, cloned_keys):
               + (f" | key has finetuned models" if key.has_special_models else "")
               + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
               + (f" | real 32k key (pre deprecation)" if key.real_32k else "")
-              + (f" | !!!god key!!!" if key.the_one else ""))
+              + (f" | !!!god key!!!" if key.the_one else "")
+              + (f" | id verified" if key.id_verified else ""))
 
     print(f'\nValidated {len(key_groups["gpt-4-32k-0314"]["no_quota"])} gpt-4-32k keys with no quota:')
     for key in key_groups["gpt-4-32k-0314"]["no_quota"]:
@@ -322,8 +361,11 @@ def pretty_print_oai_keys(keys, cloned_keys):
               + (f" | key has finetuned models" if key.has_special_models else "")
               + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
               + (f" | real 32k key (pre deprecation)" if key.real_32k else "")
-              + (f" | !!!god key!!!" if key.the_one else ""))
+              + (f" | !!!god key!!!" if key.the_one else "")
+              + (f" | id verified" if key.id_verified else ""))
 
     if cloned_keys:
         print(f'\n--- Cloned {len(cloned_keys)} keys due to finding alternative orgs that could prompt ---')
-    print(f'\n--- Total Valid OpenAI Keys: {len(keys)} ({quota_count} in quota, {no_quota_count} no quota, {org_count} orgs, {t5_count} Tier5) ---\n')
+    print(f'\n--- Total Valid OpenAI Keys: {len(keys)} ({quota_count} in quota, {no_quota_count} no quota, {org_count} orgs'
+          + (f' - {verified_org_count} with id verified' if running_org_verify else "")
+          + f', {t5_count} Tier5) ---\n')
