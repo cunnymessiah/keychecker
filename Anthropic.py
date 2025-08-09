@@ -37,8 +37,9 @@ async def check_anthropic(key: APIKey, session):
         try:
             ratelimit = int(response.headers['anthropic-ratelimit-requests-limit'])
             key.tier = get_tier(ratelimit)
-        except KeyError:
-            key.tier = "Scale Tier"
+            key.rpm = ratelimit
+        except (KeyError, ValueError):
+            key.tier = "Unknown (bad header)"
 
         content_texts = [content.get("text", "") for content in json_response.get("content", []) if content.get("type") == "text"]
         key.pozzed = any(pozzed_message in text for text in content_texts for pozzed_message in pozzed_messages)
@@ -76,7 +77,7 @@ def pretty_print_anthropic_keys(keys):
     for tier, keys_in_tier in keys_by_tier.items():
         print(f'\n{len(keys_in_tier)} keys found in {tier}:')
         for key in keys_in_tier:
-            print(f'{key.api_key}' + (' | pozzed' if key.pozzed else "") + (' | rate limited' if key.rate_limited else ""))
+            print(f'{key.api_key}' + (' | pozzed' if key.pozzed else "") + (' | rate limited' if key.rate_limited else "") + (f' | {key.rpm} rpm' if key.tier == 'Scale Tier' else ""))
 
     print(f'\nTotal keys without quota: {len(keys_without_quota)}')
     for key in keys_without_quota:

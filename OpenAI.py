@@ -1,8 +1,16 @@
+import copy
 import APIKey
 import asyncio
 
 oai_api_url = "https://api.openai.com/v1"
-oai_tiers = {40000: 'Free', 200000: 'Tier1', 2000000: 'Tier2', 4000000: 'Tier3', 10000000: 'Tier4', 150000000: 'Tier5'}
+# free tier keys are no longer considered human
+oai_tiers = {
+    'Tier 1': {'tpm': 30000, 'rpm': 500},
+    'Tier 2': {'tpm': 450000, 'rpm': 5000},
+    'Tier 3': {'tpm': 800000, 'rpm': 5000},
+    'Tier 4': {'tpm': 2000000, 'rpm': 10000},
+    'Tier 5': {'tpm': 40000000, 'rpm': 15000} # non gpt-5 -> 30000000, 10000
+}
 
 standard_model_ids = {
     "omni-moderation-2024-09-26",
@@ -23,7 +31,6 @@ standard_model_ids = {
     "gpt-4o-mini-audio-preview",
     "whisper-1",
     "gpt-4-turbo",
-    "gpt-4-32k-0314",
     "gpt-4o-realtime-preview-2024-10-01",
     "gpt-4",
     "babbage-002",
@@ -58,11 +65,9 @@ standard_model_ids = {
     "text-embedding-3-large",
     "o3-mini-2025-01-31",
     "gpt-4-0613",
-    "gpt-4-32k-0613",
     "o3-mini",
     "omni-moderation-latest",
     "gpt-4-base",
-    "gpt-4-32k",
     "o1-pro",
     "o1-pro-2025-03-19",
     "gpt-4o-transcribe",
@@ -74,8 +79,6 @@ standard_model_ids = {
     "gpt-4o-mini-search-preview-2025-03-11",
     "gpt-4o-mini-transcribe",
     "gpt-4o-mini-tts",
-    "gpt-4.5-preview",
-    "gpt-4.5-preview-2025-02-27",
     "o3",
     "o4-mini",
     "o3-2025-04-16",
@@ -86,12 +89,30 @@ standard_model_ids = {
     "gpt-4.1-nano-2025-04-14",
     "gpt-4.1",
     "gpt-4.1-2025-04-14",
-    "gpt-image-1"
+    "gpt-image-1",
+    "codex-mini-latest",
+    "gpt-4o-realtime-preview-2025-06-03",
+    "gpt-4o-audio-preview-2025-06-03",
+    "o3-pro",
+    "o3-pro-2025-06-10",
+    "o3-deep-research",
+    "o3-deep-research-2025-06-26",
+    "o4-mini-deep-research",
+    "o4-mini-deep-research-2025-06-26",
+    "gpt-5-mini",
+    "gpt-5-mini-2025-08-07",
+    "gpt-5-nano",
+    "gpt-5-nano-2025-08-07",
+    "gpt-5",
+    "gpt-5-2025-08-07",
+    "gpt-5-chat-latest"
 }
 
 running_org_verify = False
 
+non_slop_standard = {"gpt-5", "gpt-5-chat-latest", "o3", "gpt-4.1", "chatgpt-4o-latest", "gpt-4o"}  # i imagine this is all people care about now
 async def get_oai_model(key: APIKey, session, retries, org=None):
+    accessible_models = set()
     for _ in range(retries):
         headers = {'Authorization': f'Bearer {key.api_key}'}
         if org is not None:
@@ -99,36 +120,31 @@ async def get_oai_model(key: APIKey, session, retries, org=None):
         async with session.get(f'{oai_api_url}/models', headers=headers) as response:
             if response.status == 200:
                 data = await response.json()
-
-                model_priority = ["gpt-4-32k-0314", "gpt-4o", "gpt-4o-mini"]
-                available_priority_models = set()
-
                 for model in data["data"]:
                     model_id = model["id"]
-
                     if "ft:" in model_id:
                         key.has_special_models = True
                     elif model_id not in standard_model_ids and ":ft-" not in model_id:
                         key.extra_models = True
                         key.extra_model_list.add(model_id)
 
-                    if model_id == "gpt-4-base":
+                    if model_id == "gpt-4-base" or model_id == "gpt-5-alpha-max" or model_id == "gpt-4.5-preview":
                         key.the_one = True
+                        key.slop = False
                     if model_id == "gpt-4-32k" or model_id == "gpt-4-32k-0613":
                         key.real_32k = True
+                        key.slop = False
+                    if model_id in non_slop_standard:
+                        key.slop = False
+                        key.model = model_id
+                        accessible_models.add(model_id)
 
-                    if model_id in model_priority:
-                        available_priority_models.add(model_id)
-
-                key.model = "gpt-4o-mini"
-                for priority_model in model_priority:
-                    if priority_model in available_priority_models:
-                        key.model = priority_model
-                        break
+                key.missing_models = non_slop_standard.difference(accessible_models)
 
                 return True
             elif response.status == 403:
-                key.model = "gpt-4o-mini"
+                key.model = "gpt-5"
+                key.access_to_model_listing = False
                 return True
             elif response.status != 502:
                 return
@@ -136,13 +152,16 @@ async def get_oai_model(key: APIKey, session, retries, org=None):
 
 
 async def get_oai_key_attribs(key: APIKey, session, retries, org=None, check_id=False):
-    chat_object = {"model": f'{key.model}', "messages": [{"role": "user", "content": ""}], "max_tokens": 0}
+    param = "max_tokens" if "gpt-4" in key.model else "max_completion_tokens"
+    chat_object = {"model": key.model, "messages": [{"role": "user", "content": ""}], param: 0}
     for _ in range(retries):
         headers = {'Authorization': f'Bearer {key.api_key}', 'accept': 'application/json'}
         if org is not None:
             headers['OpenAI-Organization'] = org
         async with session.post(f'{oai_api_url}/chat/completions', headers=headers, json=chat_object) as response:
-            if response.status in [400, 429]:
+            if (response.status == 403):
+                return True
+            elif response.status in [400, 429]:
                 data = await response.json()
                 message = data["error"]["type"]
                 if message is None:
@@ -157,11 +176,13 @@ async def get_oai_key_attribs(key: APIKey, session, retries, org=None, check_id=
                     case "invalid_request_error":
                         key.has_quota = True
                         key.rpm = int(response.headers.get("x-ratelimit-limit-requests"))
-                        key.tier = await get_oai_key_tier(key, session, retries)
+                        tpm = int(response.headers.get("x-ratelimit-limit-tokens"))
+                        key.tier = await get_oai_key_tier(tpm, key.model)
                         if check_id:
                             global running_org_verify
                             running_org_verify = True
                             key.id_verified = await check_id_verified(key, session, retries)
+                        key.slop = False
                 return True
             elif response.status not in [502, 500]:
                 return
@@ -194,26 +215,18 @@ async def check_id_verified(key: APIKey, session, retries, org=None):
 
 
 # this will weed out fake t4/t5 keys reporting a 10k rpm limit, those keys would have requested to have their rpm increased
-async def get_oai_key_tier(key: APIKey, session, retries, org=None):
-    chat_object = {"model": f'gpt-4o-mini', "messages": [{"role": "user", "content": ""}], "max_tokens": 0}
-    for attempt in range(retries):
-        headers = {'Authorization': f'Bearer {key.api_key}', 'accept': 'application/json'}
-        if org is not None:
-            headers['OpenAI-Organization'] = org
-        async with session.post(f'{oai_api_url}/chat/completions', headers=headers, json=chat_object) as response:
-            if response.status in [400, 429]:
-                try:
-                    return oai_tiers[int(response.headers.get("x-ratelimit-limit-tokens"))]
-                except (KeyError, TypeError, ValueError):
-                    if attempt == retries - 1:
-                        # saw a few keys return no limit headers at all for 4o-mini, but then a 4mil token limit for normal 4o which is more than t4, while also having a t2 rpm (5k)?
-                        # there also seems to be another key tier in between free and t1, with a 100k token limit and 200 rpm
-                        return "Tier Unknown (strange or absent token limit in header)"
-                    continue
-            elif response.status != 502:
-                return
-        await asyncio.sleep(0.5)
-    return
+unknown = "Tier Unknown (strange or absent token limit in header)"
+async def get_oai_key_tier(tpm, model_name):
+    if not isinstance(tpm, int):
+        return unknown
+
+    fixed_tiers = copy.deepcopy(oai_tiers)
+    if "gpt-5" not in model_name:
+        fixed_tiers['Tier 5']['tpm'] = 30000000
+    for tier_name, tier_data in fixed_tiers.items():
+        if tier_data['tpm'] == tpm:
+            return tier_name
+    return unknown
 
 
 async def get_oai_org(key: APIKey, session, retries):
@@ -254,118 +267,99 @@ async def clone_key(key: APIKey, session, retries):
 
 
 def check_manual_increase(key: APIKey):
-    if key.model == 'gpt-4o-mini' and key.rpm > 500: # could false flag high tier alternative orgs that restrict model access to only 4o-mini
-        return True
-    elif key.tier == 'Tier1' and key.model != 'gpt-4o-mini' and key.rpm > 500:
-        return True
-    elif key.tier in ['Tier2', 'Tier3'] and key.rpm > 5000:
-        return True
-    elif key.tier in ['Tier3', 'Tier4'] and key.rpm > 10000:
-        return True
+    fixed_tiers = copy.deepcopy(oai_tiers)
+    if "gpt-5" not in key.model:
+        fixed_tiers['Tier 5']['rpm'] = 10000
+    if key.tier in fixed_tiers:
+        standard_rpm = fixed_tiers[key.tier]['rpm']
+        return key.rpm > standard_rpm
     return False
 
 
+def format_key_details(key: APIKey):
+    details = [key.api_key]
+    if key.access_to_model_listing is False:
+        details.append("no access to /models endpoint")
+    if len(key.missing_models) > 0 and not key.slop:
+        details.append(f"!!!WARNING!!! key doesn't have access to models: {key.missing_models}")
+    if key.default_org:
+        details.append(f"default org - {key.default_org}")
+    other_orgs = [org for org in key.organizations if org != key.default_org]
+    if other_orgs:
+        details.append(f"other orgs - {other_orgs}")
+    if key.has_quota:
+        details.append(f"{key.rpm} RPM")
+        if check_manual_increase(key):
+            details.append("(RPM increased via request)")
+    if key.the_one:
+        details.append(f"!!!god key!!!")
+    if key.real_32k:
+        details.append(f"!!!32k key!!!")
+    if key.has_special_models:
+        details.append("key has finetuned models")
+    if key.extra_models:
+        details.append(f"key has access to non-standard models: {', '.join(key.extra_model_list)}")
+    if key.id_verified:
+        details.append("id verified")
+
+    return " | ".join(details)
+
 def pretty_print_oai_keys(keys, cloned_keys):
     print('-' * 90)
-    org_count = 0
-    verified_org_count = 0
-    quota_count = 0
-    no_quota_count = 0
-    t5_count = 0
 
-    key_groups = {
-        "gpt-4o-mini": {
-            "has_quota": [],
-            "no_quota": []
-        },
-        "gpt-4o": {
-            "has_quota": [],
-            "no_quota": []
-        },
-        "gpt-4-32k-0314": {
-            "has_quota": [],
-            "no_quota": []
-        }
+    group = {
+        "quota": {},
+        "no_quota": [],
+        "slop": []
     }
 
     for key in keys:
-        if key.organizations:
-            org_count += 1
-        if key.id_verified:
-            verified_org_count += 1
-        if key.tier == 'Tier5':
-            t5_count += 1
-        if key.has_quota:
-            key_groups[key.model]['has_quota'].append(key)
-            quota_count += 1
+        if key.slop:
+            group["slop"].append(key)
+        elif key.has_quota:
+            if key.tier not in group["quota"]:
+                group["quota"][key.tier] = []
+            group["quota"][key.tier].append(key)
         else:
-            key_groups[key.model]['no_quota'].append(key)
-            no_quota_count += 1
+            group["no_quota"].append(key)
 
-    print(f'Validated {len(key_groups["gpt-4o-mini"]["has_quota"])} gpt-4o-mini keys with quota:')
-    for key in key_groups["gpt-4o-mini"]["has_quota"]:
-        print(f"{key.api_key}"
-              + (f" | default org - {key.default_org}" if key.default_org else "")
-              + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + f" | {key.rpm} RPM" + (f" - {key.tier}" if key.tier else "")
-              + (" (RPM increased via request)" if check_manual_increase(key) else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
-              + (f" | id verified" if key.id_verified else ""))
+    quota_keys_by_tier = group["quota"]
+    stats = {
+        "quota_count": sum(len(tier_keys) for tier_keys in quota_keys_by_tier.values()),
+        "no_quota_count": len(group["no_quota"]),
+        "slop_count": len(group["slop"]),
+        "org_count": sum(1 for k in keys if k.organizations),
+        "verified_org_count": sum(1 for k in keys if k.id_verified),
+        "t5_count": len(quota_keys_by_tier.get('Tier 5', []))
+    }
 
-    print(f'\nValidated {len(key_groups["gpt-4o-mini"]["no_quota"])} gpt-4o-mini keys with no quota:')
-    for key in key_groups["gpt-4o-mini"]["no_quota"]:
-        print(f"{key.api_key}"
-              + (f" | default org - {key.default_org}" if key.default_org else "")
-              + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
-              + (f" | id verified" if key.id_verified else ""))
+    if stats["quota_count"] > 0:
+        print(f"\n--- Verified {stats['quota_count']} OpenAI keys with quota ---")
+        for tier_name in reversed(oai_tiers.keys()):
+            if tier_name in quota_keys_by_tier:
+                print(f"\nFound {len(quota_keys_by_tier[tier_name])} keys in {tier_name}:")
+                for key in quota_keys_by_tier[tier_name]:
+                    print(format_key_details(key))
 
-    print(f'\nValidated {len(key_groups["gpt-4o"]["has_quota"])} gpt-4o keys with quota:')
-    for key in key_groups["gpt-4o"]["has_quota"]:
-        print(f"{key.api_key}"
-              + (f" | default org - {key.default_org}" if key.default_org else "")
-              + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + f" | {key.rpm} RPM" + (f" - {key.tier}" if key.tier else "")
-              + (" (RPM increased via request)" if check_manual_increase(key) else "")
-              + (f" | key has finetuned models" if key.has_special_models else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
-              + (f" | id verified" if key.id_verified else ""))
+        if unknown in quota_keys_by_tier:
+            print(f"\n{unknown}:")
+            for key in quota_keys_by_tier[unknown]:
+                print(format_key_details(key))
 
-    print(f'\nValidated {len(key_groups["gpt-4o"]["no_quota"])} gpt-4o keys with no quota:')
-    for key in key_groups["gpt-4o"]["no_quota"]:
-        print(f"{key.api_key}"
-              + (f" | default org - {key.default_org}" if key.default_org else "")
-              + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + (f" | key has finetuned models" if key.has_special_models else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
-              + (f" | id verified" if key.id_verified else ""))
+    if stats["no_quota_count"] > 0:
+        print(f"\n--- Verified {stats['no_quota_count']} OpenAI keys with no quota ---")
+        for key in group["no_quota"]:
+            print(format_key_details(key))
 
-    print(f'\nValidated {len(key_groups["gpt-4-32k-0314"]["has_quota"])} gpt-4-32k keys with quota:')
-    for key in key_groups["gpt-4-32k-0314"]["has_quota"]:
-        print(f"{key.api_key}"
-              + (f" | default org - {key.default_org}" if key.default_org else "")
-              + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + f" | {key.rpm} RPM" + (f" - {key.tier}" if key.tier else "")
-              + (" (RPM increased via request)" if check_manual_increase(key) else "")
-              + (f" | key has finetuned models" if key.has_special_models else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
-              + (f" | real 32k key (pre deprecation)" if key.real_32k else "")
-              + (f" | !!!god key!!!" if key.the_one else "")
-              + (f" | id verified" if key.id_verified else ""))
-
-    print(f'\nValidated {len(key_groups["gpt-4-32k-0314"]["no_quota"])} gpt-4-32k keys with no quota:')
-    for key in key_groups["gpt-4-32k-0314"]["no_quota"]:
-        print(f"{key.api_key}"
-              + (f" | default org - {key.default_org}" if key.default_org else "")
-              + (f" | other orgs - {key.organizations}" if len(key.organizations) > 1 else "")
-              + (f" | key has finetuned models" if key.has_special_models else "")
-              + (f" | key has access to non-standard models: {', '.join(key.extra_model_list)}" if key.extra_models else "")
-              + (f" | real 32k key (pre deprecation)" if key.real_32k else "")
-              + (f" | !!!god key!!!" if key.the_one else "")
-              + (f" | id verified" if key.id_verified else ""))
+    if stats["slop_count"] > 0:
+        print(f"\n--- Verified {stats['slop_count']} OpenAI keys that are slop (no access to useful models or on free tier) ---")
+        for key in group["slop"]:
+            print(format_key_details(key))
 
     if cloned_keys:
         print(f'\n--- Cloned {len(cloned_keys)} keys due to finding alternative orgs that could prompt ---')
-    print(f'\n--- Total Valid OpenAI Keys: {len(keys)} ({quota_count} in quota, {no_quota_count} no quota, {org_count} orgs'
-          + (f' - {verified_org_count} with id verified' if running_org_verify else "")
-          + f', {t5_count} Tier5) ---\n')
+    summary = f'\n--- Total Valid OpenAI Keys: {len(keys)} ' + f'({stats["quota_count"]} in quota, {stats["no_quota_count"]} no quota, {stats["slop_count"]} slop, {stats["org_count"]} orgs'
+    if running_org_verify:
+        summary += f' - {stats["verified_org_count"]} with id verified'
+    summary += f', {stats["t5_count"]} Tier 5) ---\n'
+    print(summary)

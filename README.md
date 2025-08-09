@@ -6,7 +6,7 @@ Currently supports and validates keys for the services below, and checks for the
 - OpenAI - (Best model, key in quota, RPM (catches increase requests), tier, list of organizations if applicable, trial key status)
 - Anthropic - (Pozzed status and key tier, along with remaining character quota)
 - AI21 - (Trial check)
-- Google MakerSuite (List of available models + billing status)
+- Google MakerSuite (List of available models + billing status and key tier)
 - AWS - (Admin status, auto-fetch the region, logging status, username, bedrock status + enabled models)
 - Azure - (Auto-fetch all deployments, auto-fetch best deployment/model, filter status, dall-e deployment)
 - Google Cloud Vertex AI - (Requires a key file since oauth tokens expire hourly.)

@@ -19,6 +19,9 @@ class APIKey:
             self.extra_models = False
             self.extra_model_list = set()
             self.id_verified = False
+            self.slop = True
+            self.missing_models = set()
+            self.access_to_model_listing = True
 
         elif provider == Provider.ANTHROPIC:
             self.pozzed = False
@@ -60,6 +63,7 @@ class APIKey:
         elif provider == Provider.MAKERSUITE:
             self.models = []
             self.enabled_billing = False
+            self.tier = ""
 
         elif provider == Provider.OPENROUTER:
             self.usage = 0
