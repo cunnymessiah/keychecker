@@ -98,7 +98,8 @@ def pretty_print_makersuite_keys(keys):
             billing_count += 1
             if "(" in key.tier:
                 unknown_keys.add(key)
-        keys_by_tier.setdefault(key.tier, []).append(key)
+            else:
+                keys_by_tier.setdefault(key.tier, []).append(key)
 
     for tier in output_order:
         if tier in keys_by_tier:

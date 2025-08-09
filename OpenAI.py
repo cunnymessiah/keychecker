@@ -342,7 +342,7 @@ def pretty_print_oai_keys(keys, cloned_keys):
                     print(format_key_details(key))
 
         if unknown in quota_keys_by_tier:
-            print(f"\n{unknown}:")
+            print(f"\nFound {len(quota_keys_by_tier[unknown])} keys of {unknown}:")
             for key in quota_keys_by_tier[unknown]:
                 print(format_key_details(key))
 
