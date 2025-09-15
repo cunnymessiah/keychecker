@@ -5,7 +5,7 @@ import asyncio
 oai_api_url = "https://api.openai.com/v1"
 # free tier keys are no longer considered human
 oai_tiers = {
-    'Tier 1': {'tpm': 30000, 'rpm': 500},
+    'Tier 1': {'tpm': 500000, 'rpm': 500},  # why is this grayed out on the website
     'Tier 2': {'tpm': 1000000, 'rpm': 5000},
     'Tier 3': {'tpm': 2000000, 'rpm': 5000},
     'Tier 4': {'tpm': 4000000, 'rpm': 10000},
@@ -284,7 +284,7 @@ def format_key_details(key: APIKey):
     details = [key.api_key]
     if key.access_to_model_listing is False:
         details.append("no access to /models endpoint")
-    if len(key.missing_models) > 0 and not key.slop:
+    if len(key.missing_models) > 0 and not key.slop and key.has_quota:
         details.append(f"!!!WARNING!!! key doesn't have access to models: {key.missing_models}")
     if key.default_org:
         details.append(f"default org - {key.default_org}")
