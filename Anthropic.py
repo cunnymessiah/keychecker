@@ -30,7 +30,7 @@ async def check_anthropic(key: APIKey, session):
             error_message = json_response.get("error", {}).get("message", "")
             if "This organization has been disabled" in error_message:
                 return
-            elif "Your credit balance is too low to access the Anthropic API" in error_message:
+            elif "Your credit balance is too low to access the Anthropic API" in error_message or 'You have reached your specified API usage limits' in error_message:
                 key.has_quota = False
                 return True
                 

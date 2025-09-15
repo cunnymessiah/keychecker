@@ -6,9 +6,9 @@ oai_api_url = "https://api.openai.com/v1"
 # free tier keys are no longer considered human
 oai_tiers = {
     'Tier 1': {'tpm': 30000, 'rpm': 500},
-    'Tier 2': {'tpm': 450000, 'rpm': 5000},
-    'Tier 3': {'tpm': 800000, 'rpm': 5000},
-    'Tier 4': {'tpm': 2000000, 'rpm': 10000},
+    'Tier 2': {'tpm': 1000000, 'rpm': 5000},
+    'Tier 3': {'tpm': 2000000, 'rpm': 5000},
+    'Tier 4': {'tpm': 4000000, 'rpm': 10000},
     'Tier 5': {'tpm': 40000000, 'rpm': 15000} # non gpt-5 -> 30000000, 10000
 }
 
@@ -105,7 +105,11 @@ standard_model_ids = {
     "gpt-5-nano-2025-08-07",
     "gpt-5",
     "gpt-5-2025-08-07",
-    "gpt-5-chat-latest"
+    "gpt-5-chat-latest",
+    "gpt-audio-2025-08-28",
+    "gpt-realtime-2025-08-28",
+    "gpt-audio",
+    "gpt-realtime"
 }
 
 running_org_verify = False
