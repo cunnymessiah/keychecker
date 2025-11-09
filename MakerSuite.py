@@ -52,7 +52,7 @@ async def test_key_tier(key: APIKey, session):
             if "exceeds the maximum number of tokens allowed" in resp_json.get("error", {}).get("message", ""):
                 key.tier = "Tier 3"
         elif response.status == 429:
-            violations = resp_json.get("error", {}).get("details", [])[0].get("violations", [])
+            violations = resp_json.get("error", {}).get("details", [])[1].get("violations", [])
             for violation in violations:
                 quota_metric = violation.get("quotaMetric", "")
                 quota_value = violation.get("quotaValue", "")

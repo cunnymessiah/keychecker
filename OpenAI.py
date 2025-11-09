@@ -71,6 +71,7 @@ standard_model_ids = {
     "o1-pro",
     "o1-pro-2025-03-19",
     "gpt-4o-transcribe",
+    "gpt-4o-transcribe-diarize",
     "computer-use-preview",
     "computer-use-preview-2025-03-11",
     "gpt-4o-search-preview",
@@ -90,6 +91,7 @@ standard_model_ids = {
     "gpt-4.1",
     "gpt-4.1-2025-04-14",
     "gpt-image-1",
+    "gpt-image-1-mini",
     "codex-mini-latest",
     "gpt-4o-realtime-preview-2025-06-03",
     "gpt-4o-audio-preview-2025-06-03",
@@ -106,10 +108,21 @@ standard_model_ids = {
     "gpt-5",
     "gpt-5-2025-08-07",
     "gpt-5-chat-latest",
+    "gpt-5-codex",
+    "gpt-5-pro",
+    "gpt-5-pro-2025-10-06",
+    "gpt-5-search-api",
+    "gpt-5-search-api-2025-10-14",
     "gpt-audio-2025-08-28",
     "gpt-realtime-2025-08-28",
     "gpt-audio",
-    "gpt-realtime"
+    "gpt-audio-mini",
+    "gpt-audio-mini-2025-10-06",
+    "gpt-realtime",
+    "gpt-realtime-mini",
+    "gpt-realtime-mini-2025-10-06",
+    "sora-2",
+    "sora-2-pro",
 }
 
 running_org_verify = False
