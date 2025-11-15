@@ -123,6 +123,11 @@ standard_model_ids = {
     "gpt-realtime-mini-2025-10-06",
     "sora-2",
     "sora-2-pro",
+    "gpt-5.1-2025-11-13",
+    "gpt-5.1-chat-latest",
+    "gpt-5.1",
+    "gpt-5.1-codex",
+    "gpt-5.1-codex-mini",
 }
 
 running_org_verify = False

@@ -22,7 +22,7 @@ async def check_makersuite(key: APIKey, session):
 
 async def test_key_alive(key: APIKey, session):
     data = {"generationConfig": {"max_output_tokens": 0}}
-    async with session.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-exp-03-25:generateContent?key={key.api_key}", json=data) as response:
+    async with session.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={key.api_key}", json=data) as response:
         resp_json = await response.json()
         if response.status == 429:
             error_details = resp_json.get('error', {}).get('message', '')
@@ -66,7 +66,7 @@ async def test_key_tier(key: APIKey, session):
 
 async def test_makersuite_billing(key: APIKey, session):
     data = {"instances": [{"prompt": ""}]}
-    async with session.post(f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key={key.api_key}", json=data) as response:
+    async with session.post(f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={key.api_key}", json=data) as response:
         resp_json = await response.json()
         if response.status == 400:
             error_details = resp_json.get('error', {}).get('message', '')
